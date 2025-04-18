@@ -11,40 +11,82 @@ const register = async (req, res) => {
     const { name, email, password } = req.body;
     const enc_password = await bcrypt.hash(password, randomNumber);
     const user = await User.create({ name, email, password: enc_password });
-    res.status(201).json({ message: "User created successfully", user });
+    res
+      .status(201)
+      .json({ success: true, message: "User created successfully", user });
   } catch (error) {
     res.status(500).json({ message: error });
   }
 };
-
 const login = async (req, res) => {
   try {
     const { email, password } = req.body;
     const user = await User.findOne({ email });
     if (!user) {
-      return res.status(401).json({ message: "Invalid email or password" });
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
     }
-    if (!bcrypt.compare(password, user.password)) {
-      return res.status(401).json({ message: "Invalid email or password" });
+    const isPasswordValid = await bcrypt.compare(password, user.password);
+    if (!isPasswordValid) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid password",
+      });
     }
-    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET);
-
-    const result = {
-      user,
+    const token = jwt.sign({ id: user.id }, process.env.JWT_SECRET, {
+      expiresIn: "30m",
+    });
+    res.status(200).json({
+      success: true,
+      data: user,
       token,
-    };
-    res.status(200).json({ message: "Login successful", result });
+    });
   } catch (error) {
-    res.status(500).json({ message: "Login failed" });
+    res.status(500).json({
+      success: false,
+    });
   }
 };
 
-const profile = async (req, res) => {
+const logout = async (req, res) => {
   try {
-    res.status(200).json({ message: "Profile fetched successfully" });
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    user.token = null;
+    await user.save();
+
+    res.status(200).json({ message: "Logged out successfully" });
   } catch (error) {
-    res.status(500).json({ message: "Profile fetch failed" });
+    console.error("Logout error:", error);
+    res.status(500).json({ message: "Logout failed. Please try again later." });
   }
 };
 
-module.exports = { register, login, profile };
+const getProfile = async (req, res) => {
+  try {
+    const email = req.params.email;
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+    res.status(200).json({
+      success: true,
+      data: user,
+    });
+
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Error getting user",
+    });
+  }
+};
+module.exports = { register, login, getProfile, logout };
